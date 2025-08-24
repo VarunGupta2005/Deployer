@@ -3,8 +3,6 @@
 
 name: PaaS Application Builder
 
-# The on: block defines the trigger. This is the part that was causing the 422 error.
-# This configuration allows the workflow to be started by an API call.
 on:
   workflow_dispatch:
     inputs:
