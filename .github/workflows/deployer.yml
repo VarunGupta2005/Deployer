@@ -88,25 +88,28 @@ jobs:
                   headers: { Authorization: `Bearer ${process.env.RAILWAY_API_TOKEN}` },
                 });
 
+                // Try deployment creation instead of service update
                 const mutation = gql`
-                  mutation serviceUpdate($serviceId: String!, $sourceImage: String!) {
-                    serviceUpdate(
-                      id: $serviceId,
-                      input: {
-                        sourceImage: $sourceImage
-                      }
-                    ) { id }
+                  mutation deploymentCreate($serviceId: String!, $image: String!) {
+                    deploymentCreate(input: {
+                      serviceId: $serviceId,
+                      image: $image
+                    }) {
+                      id
+                      status
+                    }
                   }
                 `;
 
                 const data = await client.request(mutation, { 
                   serviceId: process.env.SERVICE_ID, 
-                  sourceImage: process.env.IMAGE_NAME 
+                  image: process.env.IMAGE_NAME 
                 });
 
                 console.log("✅ Railway deployment successfully triggered:", data);
               } catch (err) {
                 console.error("❌ Failed to trigger Railway deployment:", err.response?.errors || err);
+                console.error("Full error:", JSON.stringify(err, null, 2));
                 process.exit(1);
               }
             })();
