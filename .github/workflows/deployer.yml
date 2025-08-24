@@ -63,5 +63,4 @@ jobs:
         run: |
           echo "Deploying to Railway service: ${{ inputs.railwayServiceId }}"
           cd ./user-code
-          railway link ${{ inputs.railwayServiceId }}
-          railway up
+          railway up --service ${{ inputs.railwayServiceId }}
