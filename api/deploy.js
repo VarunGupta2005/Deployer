@@ -11,8 +11,8 @@ const octokit = new Octokit({ auth: process.env.GITHUB_PAT });
 
 async function triggerBuilderWorkflow(owner, repo, railwayServiceId, githubRepoId) {
   await octokit.rest.actions.createWorkflowDispatch({
-    owner: 'YOUR_GITHUB_USERNAME', // <-- IMPORTANT: Your GitHub Username
-    repo: 'paas-platform-final',      // <-- IMPORTANT: The name of this repository
+    owner: 'VarunGupta2005', // <-- IMPORTANT: Your GitHub Username
+    repo: 'Deployer',      // <-- IMPORTANT: The name of this repository
     workflow_id: 'builder.yml',
     ref: 'main',
     inputs: {
