@@ -15,7 +15,7 @@ async function triggerBuilderWorkflow(owner, repo, railwayServiceId, githubRepoI
     await octokit.request('POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches', {
       owner: 'VarunGupta2005',
       repo: 'Deployer',
-      workflow_id: 'deployer.yml',
+      workflow_id: '.github/workflows/deployer.yml',
       ref: 'main',
       inputs: {
         owner: owner,
