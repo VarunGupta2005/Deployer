@@ -16,7 +16,6 @@ on:
         description: 'The unique ID of the GitHub repository'
         required: true
 
-
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
