@@ -18,13 +18,38 @@ async function triggerBuilderWorkflow(owner, repo, railwayServiceId, githubRepoI
       repo: 'Deployer',
     });
 
-    console.log('Available workflows:', workflows.data.workflows.map(w => ({ id: w.id, name: w.name, path: w.path })));
+    console.log('Available workflows:', workflows.data.workflows.map(w => ({
+      id: w.id,
+      name: w.name,
+      path: w.path,
+      state: w.state,
+      created_at: w.created_at,
+      updated_at: w.updated_at
+    })));
 
     const deployerWorkflow = workflows.data.workflows.find(w => w.path === '.github/workflows/deployer.yml');
 
     if (!deployerWorkflow) {
       throw new Error('Deployer workflow not found');
     }
+
+    console.log('Using workflow:', deployerWorkflow);
+
+    // Let's also check the workflow details
+    const workflowDetails = await octokit.rest.actions.getWorkflow({
+      owner: 'VarunGupta2005',
+      repo: 'Deployer',
+      workflow_id: deployerWorkflow.id,
+    });
+
+    console.log('Workflow details:', {
+      id: workflowDetails.data.id,
+      name: workflowDetails.data.name,
+      path: workflowDetails.data.path,
+      state: workflowDetails.data.state,
+      created_at: workflowDetails.data.created_at,
+      updated_at: workflowDetails.data.updated_at
+    });
 
     await octokit.rest.actions.createWorkflowDispatch({
       owner: 'VarunGupta2005',
