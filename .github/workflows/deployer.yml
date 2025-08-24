@@ -60,12 +60,13 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 4. Build and Push Docker Image
-        id: build_image
-        run: |
-          IMAGE_ID=ghcr.io/${{ github.repository_owner }}/${{ inputs.repo }}:${{ github.sha }}
-          echo "IMAGE_ID=$IMAGE_ID" >> $GITHUB_OUTPUT
-          docker build ./user-code -f ./user-code/Dockerfile.generated -t $IMAGE_ID
-          docker push $IMAGE_ID
+  id: build_image
+  run: |
+    OWNER_LOWERCASE=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+    IMAGE_ID=ghcr.io/$OWNER_LOWERCASE/${{ inputs.repo }}:${{ github.sha }}
+    echo "IMAGE_ID=$IMAGE_ID" >> $GITHUB_OUTPUT
+    docker build ./user-code -f ./user-code/Dockerfile.generated -t $IMAGE_ID
+    docker push $IMAGE_ID
 
       - name: 5. Deploy Image to Railway
         uses: actions/setup-node@v3
