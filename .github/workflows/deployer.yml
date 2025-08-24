@@ -1,4 +1,4 @@
-name: PaaS Application Builder and Deployer
+name: PaaS Application Builder
 
 on:
   workflow_dispatch:
@@ -39,31 +39,95 @@ jobs:
           if [ -f "$CODE_PATH/package.json" ]; then
             echo "-> Node.js project detected"
             cat <<EOF > $DOCKERFILE_PATH
-FROM node:18-alpine
-WORKDIR /usr/src/app
-COPY package*.json ./
-RUN npm install --production
-COPY . .
-EXPOSE 3000
-CMD ["npm", "start"]
-EOF
+          FROM node:18-alpine
+          WORKDIR /usr/src/app
+          COPY package*.json ./
+          RUN npm install --production
+          COPY . .
+          EXPOSE 3000
+          CMD ["npm", "start"]
+          EOF
           else
             echo "-> Error: Unknown project type. No package.json found."
             exit 1
           fi
 
-      # THIS IS THE NEW, SIMPLIFIED DEPLOYMENT PROCESS
-      # We no longer need GHCR. We will build and deploy directly to Railway.
+      - name: 3. Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 3. Set up the Railway CLI
+      - name: 4. Build and Push Docker Image
+        id: build_image
         run: |
-          curl -fsSL https://railway.app/install.sh | sh
-          echo "$HOME/.railway/bin" >> $GITHUB_PATH
+          OWNER_LOWERCASE=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_ID=ghcr.io/$OWNER_LOWERCASE/${{ inputs.repo }}:${{ github.sha }}
+          echo "IMAGE_ID=$IMAGE_ID" >> $GITHUB_OUTPUT
+          docker build ./user-code -f ./user-code/Dockerfile.generated -t $IMAGE_ID
+          docker push $IMAGE_ID
 
-      - name: 4. Deploy to Railway
+      - name: 5. Deploy Image to Railway
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - run: npm install graphql graphql-request
+      - name: Call Railway API to update service
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
-          RAILWAY_SERVICE_ID: ${{ inputs.railwayServiceId }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          SERVICE_ID: ${{ inputs.railwayServiceId }}
+          IMAGE_NAME: ${{ steps.build_image.outputs.IMAGE_ID }}
         run: |
-          echo "Starting direct deployment to Railway service: $RAILWAY_SERVICE_ID"
-          railway up --service "$RAILWAY_SERVICE_ID" --path ./user-code
+          node -e '
+            (async () => {
+              try {
+                const { GraphQLClient, gql } = await import("graphql-request");
+                
+                const client = new GraphQLClient("https://backboard.railway.app/graphql/v2", {
+                  headers: { Authorization: `Bearer ${process.env.RAILWAY_API_TOKEN}` },
+                });
+
+                // Try the exact same pattern as service creation
+                const mutation = gql`
+                  mutation serviceUpdate($serviceId: String!, $image: String!) {
+                    serviceUpdate(
+                      id: $serviceId,
+                      input: {
+                        source: { image: $image }
+                      }
+                    ) { id }
+                  }
+                `;
+
+                const data = await client.request(mutation, { 
+                  serviceId: process.env.SERVICE_ID, 
+                  image: process.env.IMAGE_NAME 
+                });
+
+                console.log("✅ Railway deployment successfully triggered:", data);
+              } catch (err) {
+                console.error("❌ Failed to trigger Railway deployment:", err.response?.errors || err);
+                console.error("Full error:", JSON.stringify(err, null, 2));
+                
+                // If that fails, try a simple service restart which might pick up the new image
+                try {
+                  console.log("Attempting service restart as fallback...");
+                  const restartMutation = gql`
+                    mutation serviceRestart($serviceId: String!) {
+                      serviceRestart(id: $serviceId)
+                    }
+                  `;
+                  
+                  await client.request(restartMutation, { 
+                    serviceId: process.env.SERVICE_ID 
+                  });
+                  
+                  console.log("✅ Service restart triggered - this may pick up the new image");
+                } catch (restartErr) {
+                  console.error("❌ Service restart also failed:", restartErr);
+                  process.exit(1);
+                }
+              }
+            })();
+          '
