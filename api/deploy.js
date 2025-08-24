@@ -12,10 +12,24 @@ const octokit = new Octokit({ auth: process.env.GITHUB_PAT });
 async function triggerBuilderWorkflow(owner, repo, railwayServiceId, githubRepoId) {
   console.log(`Attempting to dispatch workflow 'deployer.yml' for ${owner}/${repo}`);
   try {
-    await octokit.request('POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches', {
+    // First, let's try to get the workflow to make sure it exists
+    const workflows = await octokit.rest.actions.listRepoWorkflows({
       owner: 'VarunGupta2005',
       repo: 'Deployer',
-      workflow_id: 'deployer.yml',
+    });
+    
+    console.log('Available workflows:', workflows.data.workflows.map(w => ({ id: w.id, name: w.name, path: w.path })));
+    
+    const deployerWorkflow = workflows.data.workflows.find(w => w.path === '.github/workflows/deployer.yml');
+    
+    if (!deployerWorkflow) {
+      throw new Error('Deployer workflow not found');
+    }
+    
+    await octokit.rest.actions.createWorkflowDispatch({
+      owner: 'VarunGupta2005',
+      repo: 'Deployer',
+      workflow_id: deployerWorkflow.id,
       ref: 'main',
       inputs: {
         owner: owner,
@@ -23,9 +37,6 @@ async function triggerBuilderWorkflow(owner, repo, railwayServiceId, githubRepoI
         railwayServiceId: railwayServiceId,
         githubRepoId: githubRepoId.toString(),
       },
-      headers: {
-        'X-GitHub-Api-Version': '2022-11-28'
-      }
     });
     console.log("Successfully dispatched the workflow.");
   } catch (error) {
