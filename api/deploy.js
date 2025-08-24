@@ -10,18 +10,29 @@ const railway = new GraphQLClient('https://backboard.railway.app/graphql/v2', {
 const octokit = new Octokit({ auth: process.env.GITHUB_PAT });
 
 async function triggerBuilderWorkflow(owner, repo, railwayServiceId, githubRepoId) {
-  await octokit.rest.actions.createWorkflowDispatch({
-    owner: 'VarunGupta2005', // <-- IMPORTANT: Your GitHub Username
-    repo: 'Deployer',      // <-- IMPORTANT: The name of this repository
-    workflow_id: 'deployer.yml',
-    ref: 'main',
-    inputs: {
-      owner,
-      repo,
-      railwayServiceId,
-      githubRepoId: githubRepoId.toString(),
-    },
-  });
+  console.log(`Attempting to dispatch workflow 'deployer.yml' for ${owner}/${repo}`);
+  try {
+    await octokit.request('POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches', {
+      owner: 'VarunGupta2005',
+      repo: 'Deployer',
+      workflow_id: 'deployer.yml',
+      ref: 'main',
+      inputs: {
+        owner: owner,
+        repo: repo,
+        railwayServiceId: railwayServiceId,
+        githubRepoId: githubRepoId.toString(),
+      },
+      headers: {
+        'X-GitHub-Api-Version': '2022-11-28'
+      }
+    });
+    console.log("Successfully dispatched the workflow.");
+  } catch (error) {
+    console.error("Error dispatching workflow:", error.status, error.message);
+    // Rethrow the error to be caught by the main handler
+    throw error;
+  }
 }
 
 export default async function handler(req, res) {
