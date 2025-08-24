@@ -72,26 +72,40 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: '18'
-      
       - run: npm install graphql graphql-request
-      
       - name: Call Railway API to update service
         env:
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           SERVICE_ID: ${{ inputs.railwayServiceId }}
           IMAGE_NAME: ${{ steps.build_image.outputs.IMAGE_ID }}
+        # THIS IS THE CORRECTED RUN BLOCK
         run: |
           node -e '
-            const { GraphQLClient, gql } = require("graphql-request");
-            const client = new GraphQLClient("https://backboard.railway.app/graphql/v2", {
-              headers: { Authorization: `Bearer ${process.env.RAILWAY_API_TOKEN}` },
-            });
-            const mutation = gql`
-              mutation serviceUpdate($serviceId: String!, $imageId: String!) {
-                serviceUpdate(id: $serviceId, input: { image: $imageId }) { id }
+            // Use an async IIFE (Immediately Invoked Function Expression) to allow top-level await
+            (async () => {
+              try {
+                // Use dynamic import() instead of require()
+                const { GraphQLClient, gql } = await import("graphql-request");
+                
+                const client = new GraphQLClient("https://backboard.railway.app/graphql/v2", {
+                  headers: { Authorization: `Bearer ${process.env.RAILWAY_API_TOKEN}` },
+                });
+
+                const mutation = gql`
+                  mutation serviceUpdate($serviceId: String!, $imageId: String!) {
+                    serviceUpdate(id: $serviceId, input: { image: $imageId }) { id }
+                  }
+                `;
+
+                const data = await client.request(mutation, { 
+                  serviceId: process.env.SERVICE_ID, 
+                  imageId: process.env.IMAGE_NAME 
+                });
+
+                console.log("✅ Railway deployment successfully triggered:", data);
+              } catch (err) {
+                console.error("❌ Failed to trigger Railway deployment:", err);
+                process.exit(1);
               }
-            `;
-            client.request(mutation, { serviceId: process.env.SERVICE_ID, imageId: process.env.IMAGE_NAME })
-              .then(data => console.log("✅ Railway deployment successfully triggered:", data))
-              .catch(err => { console.error("❌ Failed to trigger Railway deployment:", err); process.exit(1); });
+            })();
           '
