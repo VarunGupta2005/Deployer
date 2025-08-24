@@ -1,6 +1,3 @@
-# This is the definitive builder workflow for the PaaS platform.
-# It is triggered via API by the Vercel function.
-
 name: PaaS Application Builder
 
 on:
@@ -9,53 +6,52 @@ on:
       owner:
         description: 'The owner of the user repo'
         required: true
+        type: string
       repo:
         description: 'The name of the user repo'
         required: true
+        type: string
       railwayServiceId:
         description: 'The ID of the Railway service to update'
         required: true
+        type: string
       githubRepoId:
         description: 'The unique ID of the GitHub repository'
         required: true
+        type: string
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     
     steps:
-      # Step 1: Check out the user's application code into a subfolder.
       - name: 1. Check out User's Code
         uses: actions/checkout@v4
         with:
           repository: ${{ inputs.owner }}/${{ inputs.repo }}
           path: ./user-code
 
-      # Step 2: Run our custom buildpack logic to generate a Dockerfile on the fly.
       - name: 2. Generate Dockerfile with Buildpack
         run: |
           CODE_PATH="./user-code"
           DOCKERFILE_PATH="./user-code/Dockerfile.generated"
           
-          # This buildpack currently only supports Node.js.
           if [ -f "$CODE_PATH/package.json" ]; then
             echo "-> Node.js project detected"
             cat <<EOF > $DOCKERFILE_PATH
-FROM node:18-alpine
-WORKDIR /usr/src/app
-COPY package*.json ./
-RUN npm install --production
-COPY . .
-# Railway's default port for Node.js services is 3000.
-EXPOSE 3000
-CMD ["npm", "start"]
-EOF
+          FROM node:18-alpine
+          WORKDIR /usr/src/app
+          COPY package*.json ./
+          RUN npm install --production
+          COPY . .
+          EXPOSE 3000
+          CMD ["npm", "start"]
+          EOF
           else
             echo "-> Error: Unknown project type. No package.json found."
             exit 1
           fi
 
-      # Step 3: Log in to the GitHub Container Registry (GHCR).
       - name: 3. Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -63,8 +59,6 @@ EOF
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Step 4: Build the Docker image from the user's code and our generated Dockerfile,
-      # then push it to GHCR. We use the commit SHA for a unique, traceable tag.
       - name: 4. Build and Push Docker Image
         id: build_image
         run: |
@@ -73,13 +67,13 @@ EOF
           docker build ./user-code -f ./user-code/Dockerfile.generated -t $IMAGE_ID
           docker push $IMAGE_ID
 
-      # Step 5: Tell Railway to use the new image we just pushed.
-      # This step uses Node.js to run a GraphQL client to talk to the Railway API.
       - name: 5. Deploy Image to Railway
         uses: actions/setup-node@v3
         with:
           node-version: '18'
+      
       - run: npm install graphql graphql-request
+      
       - name: Call Railway API to update service
         env:
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
