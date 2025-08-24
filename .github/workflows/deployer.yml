@@ -52,82 +52,16 @@ jobs:
             exit 1
           fi
 
-      - name: 3. Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 4. Build and Push Docker Image
-        id: build_image
+      - name: 3. Set up Railway CLI
         run: |
-          OWNER_LOWERCASE=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE_ID=ghcr.io/$OWNER_LOWERCASE/${{ inputs.repo }}:${{ github.sha }}
-          echo "IMAGE_ID=$IMAGE_ID" >> $GITHUB_OUTPUT
-          docker build ./user-code -f ./user-code/Dockerfile.generated -t $IMAGE_ID
-          docker push $IMAGE_ID
+          curl -fsSL https://railway.app/install.sh | sh
+          echo "$HOME/.railway/bin" >> $GITHUB_PATH
 
-      - name: 5. Deploy Image to Railway
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-      - run: npm install graphql graphql-request
-      - name: Call Railway API to update service
+      - name: 4. Deploy to Railway using CLI
         env:
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
-          SERVICE_ID: ${{ inputs.railwayServiceId }}
-          IMAGE_NAME: ${{ steps.build_image.outputs.IMAGE_ID }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
         run: |
-          node -e '
-            (async () => {
-              try {
-                const { GraphQLClient, gql } = await import("graphql-request");
-                
-                const client = new GraphQLClient("https://backboard.railway.app/graphql/v2", {
-                  headers: { Authorization: `Bearer ${process.env.RAILWAY_API_TOKEN}` },
-                });
-
-                // Try the exact same pattern as service creation
-                const mutation = gql`
-                  mutation serviceUpdate($serviceId: String!, $image: String!) {
-                    serviceUpdate(
-                      id: $serviceId,
-                      input: {
-                        source: { image: $image }
-                      }
-                    ) { id }
-                  }
-                `;
-
-                const data = await client.request(mutation, { 
-                  serviceId: process.env.SERVICE_ID, 
-                  image: process.env.IMAGE_NAME 
-                });
-
-                console.log("✅ Railway deployment successfully triggered:", data);
-              } catch (err) {
-                console.error("❌ Failed to trigger Railway deployment:", err.response?.errors || err);
-                console.error("Full error:", JSON.stringify(err, null, 2));
-                
-                // If that fails, try a simple service restart which might pick up the new image
-                try {
-                  console.log("Attempting service restart as fallback...");
-                  const restartMutation = gql`
-                    mutation serviceRestart($serviceId: String!) {
-                      serviceRestart(id: $serviceId)
-                    }
-                  `;
-                  
-                  await client.request(restartMutation, { 
-                    serviceId: process.env.SERVICE_ID 
-                  });
-                  
-                  console.log("✅ Service restart triggered - this may pick up the new image");
-                } catch (restartErr) {
-                  console.error("❌ Service restart also failed:", restartErr);
-                  process.exit(1);
-                }
-              }
-            })();
-          '
+          echo "Deploying to Railway service: ${{ inputs.railwayServiceId }}"
+          cd ./user-code
+          railway link ${{ inputs.railwayServiceId }}
+          railway up
