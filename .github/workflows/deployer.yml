@@ -88,16 +88,15 @@ jobs:
                   headers: { Authorization: `Bearer ${process.env.RAILWAY_API_TOKEN}` },
                 });
 
-                // Try deployment creation instead of service update
+                // Try the exact same pattern as service creation
                 const mutation = gql`
-                  mutation deploymentCreate($serviceId: String!, $image: String!) {
-                    deploymentCreate(input: {
-                      serviceId: $serviceId,
-                      image: $image
-                    }) {
-                      id
-                      status
-                    }
+                  mutation serviceUpdate($serviceId: String!, $image: String!) {
+                    serviceUpdate(
+                      id: $serviceId,
+                      input: {
+                        source: { image: $image }
+                      }
+                    ) { id }
                   }
                 `;
 
@@ -110,7 +109,25 @@ jobs:
               } catch (err) {
                 console.error("❌ Failed to trigger Railway deployment:", err.response?.errors || err);
                 console.error("Full error:", JSON.stringify(err, null, 2));
-                process.exit(1);
+                
+                // If that fails, try a simple service restart which might pick up the new image
+                try {
+                  console.log("Attempting service restart as fallback...");
+                  const restartMutation = gql`
+                    mutation serviceRestart($serviceId: String!) {
+                      serviceRestart(id: $serviceId)
+                    }
+                  `;
+                  
+                  await client.request(restartMutation, { 
+                    serviceId: process.env.SERVICE_ID 
+                  });
+                  
+                  console.log("✅ Service restart triggered - this may pick up the new image");
+                } catch (restartErr) {
+                  console.error("❌ Service restart also failed:", restartErr);
+                  process.exit(1);
+                }
               }
             })();
           '
