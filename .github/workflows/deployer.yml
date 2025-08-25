@@ -69,6 +69,12 @@ jobs:
             exit 1
           fi
           
+          # Set Railway token for CLI authentication
+          export RAILWAY_TOKEN="$RAILWAY_TOKEN"
+          
+          # Alternative: use railway login with token
+          echo "$RAILWAY_TOKEN" | railway login --token
+          
           # Verify Railway authentication
           echo "Verifying Railway authentication..."
           railway whoami || (echo "Railway authentication failed" && exit 1)
