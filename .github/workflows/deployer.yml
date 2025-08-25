@@ -69,15 +69,12 @@ jobs:
             exit 1
           fi
           
-          # Set Railway token for CLI authentication
+          # Set Railway token for CLI authentication (Railway CLI reads this env var)
           export RAILWAY_TOKEN="$RAILWAY_TOKEN"
-          
-          # Alternative: use railway login with token
-          echo "$RAILWAY_TOKEN" | railway login --token
           
           # Verify Railway authentication
           echo "Verifying Railway authentication..."
-          railway whoami || (echo "Railway authentication failed" && exit 1)
+          railway whoami || (echo "Railway authentication failed - check if RAILWAY_API_TOKEN is a valid project token" && exit 1)
 
           # Run the deployment
           railway up
