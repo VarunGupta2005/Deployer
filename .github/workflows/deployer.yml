@@ -72,9 +72,17 @@ jobs:
           # Set Railway token for CLI authentication (Railway CLI reads this env var)
           export RAILWAY_TOKEN="$RAILWAY_TOKEN"
           
-          # Verify Railway authentication
+          # Try to verify authentication, if it fails try linking to project
           echo "Verifying Railway authentication..."
-          railway whoami || (echo "Railway authentication failed - check if RAILWAY_API_TOKEN is a valid project token" && exit 1)
+          if ! railway whoami; then
+            echo "Direct authentication failed. Attempting to link to project..."
+            # Try to link using the service ID (Railway might need project context)
+            railway link --service "$RAILWAY_SERVICE_ID" || echo "Link failed, continuing with deployment attempt"
+            
+            # Try whoami again after linking
+            railway whoami || echo "Warning: Authentication still unclear, but proceeding with deployment"
+          fi
 
           # Run the deployment
+          echo "Starting deployment..."
           railway up
