@@ -65,6 +65,15 @@ jobs:
           echo "Deploying to Railway service: $SERVICE_ID"
           cd ./user-code
           
-          # Export token for the Railway CLI and run up in the project directory
-          export RAILWAY_TOKEN="$RAILWAY_TOKEN"
+          # Sanity checks: ensure the token is present (don't print it), and show whoami
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "ERROR: RAILWAY_TOKEN is empty. Add your Railway project token to repository Secrets as 'RAILWAY_API_TOKEN'."
+            exit 1
+          fi
+
+          # show token length only (safe) and verify auth
+          echo "RAILWAY_TOKEN length: $(echo -n "$RAILWAY_TOKEN" | wc -c)"
+          railway whoami || echo "railway whoami failed (token/auth issue)"
+
+          # Run the deployment
           railway up
