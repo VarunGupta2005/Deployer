@@ -35,45 +35,43 @@ jobs:
         run: |
           CODE_PATH="./user-code"
           DOCKERFILE_PATH="./user-code/Dockerfile.generated"
-          
+
           if [ -f "$CODE_PATH/package.json" ]; then
             echo "-> Node.js project detected"
-            cat <<EOF > $DOCKERFILE_PATH
-          FROM node:18-alpine
-          WORKDIR /usr/src/app
-          COPY package*.json ./
-          RUN npm install --production
-          COPY . .
-          EXPOSE 3000
-          CMD ["npm", "start"]
-          EOF
+            cat > "$DOCKERFILE_PATH" <<'EOF'
+FROM node:18-alpine
+WORKDIR /usr/src/app
+COPY package*.json ./
+RUN npm install --production
+COPY . .
+EXPOSE 3000
+CMD ["npm", "start"]
+EOF
           else
             echo "-> Error: Unknown project type. No package.json found."
             exit 1
           fi
 
-      - name: 3. Set up Railway CLI
+      - name: 3. Install Railway CLI
         run: |
           curl -fsSL https://railway.app/install.sh | sh
           echo "$HOME/.railway/bin" >> $GITHUB_PATH
 
-      - name: 4. Deploy to Railway using CLI
+      - name: 4. Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
-          SERVICE_ID: ${{ inputs.railwayServiceId }}
+          RAILWAY_SERVICE_ID: ${{ inputs.railwayServiceId }}
         run: |
-          echo "Deploying to Railway service: $SERVICE_ID"
+          echo "Deploying to Railway service: $RAILWAY_SERVICE_ID"
           cd ./user-code
-          
-          # Sanity checks: ensure the token is present (don't print it), and show whoami
+
+          # Ensure token is available to the CLI
           if [ -z "$RAILWAY_TOKEN" ]; then
-            echo "ERROR: RAILWAY_TOKEN is empty. Add your Railway project token to repository Secrets as 'RAILWAY_API_TOKEN'."
+            echo "ERROR: RAILWAY_API_TOKEN secret is missing or empty in the repository."
             exit 1
           fi
+          export RAILWAY_TOKEN="$RAILWAY_TOKEN"
 
-          # show token length only (safe) and verify auth
-          echo "RAILWAY_TOKEN length: $(echo -n "$RAILWAY_TOKEN" | wc -c)"
-          railway whoami || echo "railway whoami failed (token/auth issue)"
-
-          # Run the deployment
+          # Verify authentication and run deployment
+          railway whoami || (echo "railway whoami failed (invalid token)" && exit 1)
           railway up
