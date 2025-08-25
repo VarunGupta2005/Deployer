@@ -65,5 +65,6 @@ jobs:
           echo "Deploying to Railway service: $SERVICE_ID"
           cd ./user-code
           
-          # Try to deploy directly to the service
-          railway deploy --service "$SERVICE_ID"
+          # Export token for the Railway CLI and run up in the project directory
+          export RAILWAY_TOKEN="$RAILWAY_TOKEN"
+          railway up
