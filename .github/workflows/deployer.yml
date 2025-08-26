@@ -145,16 +145,20 @@ jobs:
             if [ -n "$PROJECT_ID" ]; then
               echo "Found project ID: $PROJECT_ID, Name: $PROJECT_NAME"
               
-              # Create railway config manually since interactive link is failing
-              mkdir -p ~/.railway
-              echo '{"project":"'$PROJECT_ID'","service":"'$RAILWAY_SERVICE_ID'"}' > ~/.railway/config.json
-              echo "Created Railway config file"
+              # Try using environment variables for Railway CLI
+              export RAILWAY_PROJECT_ID="$PROJECT_ID"
+              export RAILWAY_SERVICE_ID="$RAILWAY_SERVICE_ID"
               
-              # Verify the link worked
+              echo "Set Railway environment variables"
+              echo "Project ID: $RAILWAY_PROJECT_ID"
+              echo "Service ID: $RAILWAY_SERVICE_ID"
+              
+              # Check if Railway recognizes the project now
               railway status || echo "Status check failed, but proceeding with deployment"
             fi
             
-            # Deploy with Railway CLI
+            # Deploy with Railway CLI using environment variables
             echo "Starting Railway deployment..."
-            railway up || echo "Railway up failed"
+            cd ./user-code
+            RAILWAY_PROJECT_ID="$PROJECT_ID" RAILWAY_SERVICE_ID="$RAILWAY_SERVICE_ID" railway up || echo "Railway up failed"
           fi
