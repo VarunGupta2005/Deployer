@@ -57,27 +57,27 @@ jobs:
 
       - name: 4. Deploy to Railway
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           RAILWAY_SERVICE_ID: ${{ inputs.railwayServiceId }}
         run: |
           echo "Deploying to Railway service: $RAILWAY_SERVICE_ID"
           cd ./user-code
           
           # Check if token is available
-          if [ -z "$RAILWAY_TOKEN" ]; then
+          if [ -z "$RAILWAY_API_TOKEN" ]; then
             echo "ERROR: RAILWAY_API_TOKEN secret is missing or empty in the repository."
             exit 1
           fi
           
           # Debug token format (show first/last few characters)
-          echo "Token format check: ${RAILWAY_TOKEN:0:8}...${RAILWAY_TOKEN: -8}"
+          echo "Token format check: ${RAILWAY_API_TOKEN:0:8}...${RAILWAY_API_TOKEN: -8}"
           
           # Set Railway token for CLI authentication
-          export RAILWAY_TOKEN="$RAILWAY_TOKEN"
+          export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
           
           # Create railway config directory and token file (alternative auth method)
           mkdir -p ~/.railway
-          echo "$RAILWAY_TOKEN" > ~/.railway/token
+          echo "$RAILWAY_API_TOKEN" > ~/.railway/token
           
           # Try to verify authentication
           echo "Verifying Railway authentication..."
@@ -87,7 +87,7 @@ jobs:
             # Token works for API access, let's try different deployment approaches
             echo "Testing API access..."
             PROJECT_INFO=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
-              -H "Authorization: Bearer $RAILWAY_TOKEN" \
+              -H "Authorization: Bearer $RAILWAY_API_TOKEN" \
               -H "Content-Type: application/json" \
               -d '{
                 "query": "query { me { id email } }"
@@ -97,7 +97,7 @@ jobs:
             # Try to get service information first
             echo "Getting service information..."
             SERVICE_INFO=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
-              -H "Authorization: Bearer $RAILWAY_TOKEN" \
+              -H "Authorization: Bearer $RAILWAY_API_TOKEN" \
               -H "Content-Type: application/json" \
               -d '{
                 "query": "query service($id: String!) { service(id: $id) { id name deployments { edges { node { id status } } } } }",
@@ -110,7 +110,7 @@ jobs:
             # Try creating a deployment with minimal required fields
             echo "Creating deployment..."
             DEPLOY_RESPONSE=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
-              -H "Authorization: Bearer $RAILWAY_TOKEN" \
+              -H "Authorization: Bearer $RAILWAY_API_TOKEN" \
               -H "Content-Type: application/json" \
               -d '{
                 "query": "mutation deploymentCreate($input: DeploymentCreateInput!) { deploymentCreate(input: $input) { id status createdAt } }",
