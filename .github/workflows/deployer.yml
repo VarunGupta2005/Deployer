@@ -82,29 +82,34 @@ jobs:
           # Try to verify authentication
           echo "Verifying Railway authentication..."
           if ! railway whoami; then
-            echo "CLI authentication failed. Trying direct API approach..."
+            echo "CLI authentication failed. Trying source-based deployment via API..."
             
-            # Use Railway API directly for deployment instead of CLI
-            echo "Building and deploying via Docker and Railway API..."
+            # Create a simple deployment using source instead of Docker image
+            echo "Creating source-based deployment via Railway API..."
             
-            # Build the Docker image
-            docker build -f Dockerfile.generated -t railway-deploy:latest .
-            
-            # Try a simpler API approach - create a new deployment
-            echo "Creating new deployment via Railway API..."
-            curl -X POST "https://backboard.railway.app/graphql/v2" \
+            # First, let's try to get project info to verify token works
+            echo "Testing API access..."
+            PROJECT_INFO=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
               -H "Authorization: Bearer $RAILWAY_TOKEN" \
               -H "Content-Type: application/json" \
               -d '{
-                "query": "mutation deploymentCreate($input: DeploymentCreateInput!) { deploymentCreate(input: $input) { id status } }",
+                "query": "query { me { id email } }"
+              }')
+            echo "API Response: $PROJECT_INFO"
+            
+            # Try triggering a redeploy of the service (simpler than creating new deployment)
+            echo "Triggering service redeploy..."
+            REDEPLOY_RESPONSE=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
+              -H "Authorization: Bearer $RAILWAY_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "query": "mutation serviceInstanceRedeploy($serviceId: String!) { serviceInstanceRedeploy(serviceId: $serviceId) }",
                 "variables": {
-                  "input": {
-                    "serviceId": "'$RAILWAY_SERVICE_ID'",
-                    "meta": {}
-                  }
+                  "serviceId": "'$RAILWAY_SERVICE_ID'"
                 }
-              }' || echo "API deployment attempt failed"
-              
+              }')
+            echo "Redeploy Response: $REDEPLOY_RESPONSE"
+            
             echo "Deployment attempt completed via API"
           else
             echo "CLI authentication successful, using railway up"
