@@ -61,7 +61,6 @@ jobs:
           RAILWAY_SERVICE_ID: ${{ inputs.railwayServiceId }}
         run: |
           echo "Deploying to Railway service: $RAILWAY_SERVICE_ID"
-          cd ./user-code
           
           # Check if token is available
           if [ -z "$RAILWAY_API_TOKEN" ]; then
@@ -159,6 +158,15 @@ jobs:
             
             # Deploy with Railway CLI using environment variables
             echo "Starting Railway deployment..."
-            cd ./user-code
+            echo "Current directory: $(pwd)"
+            echo "Listing files: $(ls -la)"
+            
+            if [ -d "./user-code" ]; then
+              cd ./user-code
+              echo "Changed to user-code directory: $(pwd)"
+            else
+              echo "user-code directory not found, staying in current directory"
+            fi
+            
             RAILWAY_PROJECT_ID="$PROJECT_ID" RAILWAY_SERVICE_ID="$RAILWAY_SERVICE_ID" railway up || echo "Railway up failed"
           fi
