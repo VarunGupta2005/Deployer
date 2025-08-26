@@ -84,10 +84,7 @@ jobs:
           if ! railway whoami; then
             echo "CLI authentication failed. Trying source-based deployment via API..."
             
-            # Create a simple deployment using source instead of Docker image
-            echo "Creating source-based deployment via Railway API..."
-            
-            # First, let's try to get project info to verify token works
+            # Token works for API access, let's try different deployment approaches
             echo "Testing API access..."
             PROJECT_INFO=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
               -H "Authorization: Bearer $RAILWAY_TOKEN" \
@@ -97,18 +94,33 @@ jobs:
               }')
             echo "API Response: $PROJECT_INFO"
             
-            # Try triggering a redeploy of the service (simpler than creating new deployment)
-            echo "Triggering service redeploy..."
-            REDEPLOY_RESPONSE=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
+            # Try to get service information first
+            echo "Getting service information..."
+            SERVICE_INFO=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
               -H "Authorization: Bearer $RAILWAY_TOKEN" \
               -H "Content-Type: application/json" \
               -d '{
-                "query": "mutation serviceInstanceRedeploy($serviceId: String!) { serviceInstanceRedeploy(serviceId: $serviceId) }",
+                "query": "query service($id: String!) { service(id: $id) { id name deployments { edges { node { id status } } } } }",
                 "variables": {
-                  "serviceId": "'$RAILWAY_SERVICE_ID'"
+                  "id": "'$RAILWAY_SERVICE_ID'"
                 }
               }')
-            echo "Redeploy Response: $REDEPLOY_RESPONSE"
+            echo "Service Info: $SERVICE_INFO"
+            
+            # Try creating a deployment with minimal required fields
+            echo "Creating deployment..."
+            DEPLOY_RESPONSE=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
+              -H "Authorization: Bearer $RAILWAY_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "query": "mutation deploymentCreate($input: DeploymentCreateInput!) { deploymentCreate(input: $input) { id status createdAt } }",
+                "variables": {
+                  "input": {
+                    "serviceId": "'$RAILWAY_SERVICE_ID'"
+                  }
+                }
+              }')
+            echo "Deploy Response: $DEPLOY_RESPONSE"
             
             echo "Deployment attempt completed via API"
           else
