@@ -90,12 +90,19 @@ jobs:
             # Build the Docker image
             docker build -f Dockerfile.generated -t railway-deploy:latest .
             
-            # Get project info and deploy via API
+            # Try a simpler API approach - create a new deployment
+            echo "Creating new deployment via Railway API..."
             curl -X POST "https://backboard.railway.app/graphql/v2" \
               -H "Authorization: Bearer $RAILWAY_TOKEN" \
               -H "Content-Type: application/json" \
               -d '{
-                "query": "mutation { serviceUpdate(id: \"'$RAILWAY_SERVICE_ID'\", input: { source: { image: \"railway-deploy:latest\" } }) { id } }"
+                "query": "mutation deploymentCreate($input: DeploymentCreateInput!) { deploymentCreate(input: $input) { id status } }",
+                "variables": {
+                  "input": {
+                    "serviceId": "'$RAILWAY_SERVICE_ID'",
+                    "meta": {}
+                  }
+                }
               }' || echo "API deployment attempt failed"
               
             echo "Deployment attempt completed via API"
