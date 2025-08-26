@@ -124,6 +124,32 @@ jobs:
             
             echo "Deployment attempt completed via API"
           else
-            echo "CLI authentication successful, using railway up"
-            railway up
+            echo "CLI authentication successful, linking to project..."
+            
+            # Link to the project using the service ID
+            echo "Linking to Railway project/service..."
+            railway link --service "$RAILWAY_SERVICE_ID" || echo "Link command failed, trying alternative approach"
+            
+            # Alternative: try to link by getting project ID from service
+            if ! railway status; then
+              echo "Getting project info from service..."
+              PROJECT_ID=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
+                -H "Authorization: Bearer $RAILWAY_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d '{
+                  "query": "query service($id: String!) { service(id: $id) { project { id } } }",
+                  "variables": {
+                    "id": "'$RAILWAY_SERVICE_ID'"
+                  }
+                }' | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+              
+              if [ -n "$PROJECT_ID" ]; then
+                echo "Found project ID: $PROJECT_ID"
+                railway link "$PROJECT_ID" || echo "Project link failed"
+              fi
+            fi
+            
+            # Deploy with Railway CLI
+            echo "Starting Railway deployment..."
+            railway up --service "$RAILWAY_SERVICE_ID" || railway up
           fi
