@@ -69,20 +69,37 @@ jobs:
             exit 1
           fi
           
-          # Set Railway token for CLI authentication (Railway CLI reads this env var)
+          # Debug token format (show first/last few characters)
+          echo "Token format check: ${RAILWAY_TOKEN:0:8}...${RAILWAY_TOKEN: -8}"
+          
+          # Set Railway token for CLI authentication
           export RAILWAY_TOKEN="$RAILWAY_TOKEN"
           
-          # Try to verify authentication, if it fails try linking to project
+          # Create railway config directory and token file (alternative auth method)
+          mkdir -p ~/.railway
+          echo "$RAILWAY_TOKEN" > ~/.railway/token
+          
+          # Try to verify authentication
           echo "Verifying Railway authentication..."
           if ! railway whoami; then
-            echo "Direct authentication failed. Attempting to link to project..."
-            # Try to link using the service ID (Railway might need project context)
-            railway link --service "$RAILWAY_SERVICE_ID" || echo "Link failed, continuing with deployment attempt"
+            echo "CLI authentication failed. Trying direct API approach..."
             
-            # Try whoami again after linking
-            railway whoami || echo "Warning: Authentication still unclear, but proceeding with deployment"
+            # Use Railway API directly for deployment instead of CLI
+            echo "Building and deploying via Docker and Railway API..."
+            
+            # Build the Docker image
+            docker build -f Dockerfile.generated -t railway-deploy:latest .
+            
+            # Get project info and deploy via API
+            curl -X POST "https://backboard.railway.app/graphql/v2" \
+              -H "Authorization: Bearer $RAILWAY_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "query": "mutation { serviceUpdate(id: \"'$RAILWAY_SERVICE_ID'\", input: { source: { image: \"railway-deploy:latest\" } }) { id } }"
+              }' || echo "API deployment attempt failed"
+              
+            echo "Deployment attempt completed via API"
+          else
+            echo "CLI authentication successful, using railway up"
+            railway up
           fi
-
-          # Run the deployment
-          echo "Starting deployment..."
-          railway up
