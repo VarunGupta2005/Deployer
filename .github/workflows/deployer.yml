@@ -164,9 +164,34 @@ jobs:
             if [ -d "./user-code" ]; then
               cd ./user-code
               echo "Changed to user-code directory: $(pwd)"
+              echo "User code contents: $(ls -la)"
             else
               echo "user-code directory not found, staying in current directory"
             fi
             
-            RAILWAY_PROJECT_ID="$PROJECT_ID" RAILWAY_SERVICE_ID="$RAILWAY_SERVICE_ID" railway up || echo "Railway up failed"
+            # Try multiple Railway deployment approaches
+            echo "Attempting Railway deployment with project/service flags..."
+            if railway up --project "$PROJECT_ID" --service "$RAILWAY_SERVICE_ID"; then
+              echo "Railway deployment successful with flags!"
+            elif railway deploy --project "$PROJECT_ID" --service "$RAILWAY_SERVICE_ID"; then
+              echo "Railway deployment successful with deploy command!"
+            elif RAILWAY_PROJECT_ID="$PROJECT_ID" RAILWAY_SERVICE_ID="$RAILWAY_SERVICE_ID" railway up; then
+              echo "Railway deployment successful with environment variables!"
+            else
+              echo "All Railway CLI attempts failed, trying API deployment as final fallback..."
+              
+              # Create a simple deployment via API
+              API_DEPLOY=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
+                -H "Authorization: Bearer $RAILWAY_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d '{
+                  "query": "mutation deploymentCreate($input: DeploymentCreateInput!) { deploymentCreate(input: $input) { id status } }",
+                  "variables": {
+                    "input": {
+                      "serviceId": "'$RAILWAY_SERVICE_ID'"
+                    }
+                  }
+                }')
+              echo "Final API deployment attempt: $API_DEPLOY"
+            fi
           fi
