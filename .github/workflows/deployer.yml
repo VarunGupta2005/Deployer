@@ -115,9 +115,42 @@ jobs:
           echo "$RAILWAY_API_TOKEN" > ~/.railway/token
           railway whoami
 
-          # Link to service
-          railway link --service $RAILWAY_SERVICE_ID
+          # Get project info via API to avoid interactive prompts
+          PROJECT_INFO=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
+            -H "Authorization: Bearer $RAILWAY_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "query": "query service($id: String!) { service(id: $id) { project { id } } }",
+              "variables": { "id": "'$RAILWAY_SERVICE_ID'" }
+            }')
+          
+          PROJECT_ID=$(echo "$PROJECT_INFO" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+          echo "Found project ID: $PROJECT_ID"
 
-          # Deploy prebuilt Docker image
+          # Deploy using Railway CLI with explicit project and service flags
           echo "Deploying image $IMAGE_NAME to Railway..."
-          railway up --image $IMAGE_NAME
+          cd ./user-code
+          
+          # Try different Railway deployment approaches
+          if railway up --image "$IMAGE_NAME" --service "$RAILWAY_SERVICE_ID"; then
+            echo "Deployment successful with service flag"
+          elif railway deploy --image "$IMAGE_NAME" --service "$RAILWAY_SERVICE_ID"; then
+            echo "Deployment successful with deploy command"
+          else
+            echo "CLI deployment failed, trying API deployment..."
+            
+            # Fallback to API deployment
+            API_RESPONSE=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
+              -H "Authorization: Bearer $RAILWAY_API_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "query": "mutation deploymentCreate($input: DeploymentCreateInput!) { deploymentCreate(input: $input) { id status } }",
+                "variables": {
+                  "input": {
+                    "serviceId": "'$RAILWAY_SERVICE_ID'",
+                    "meta": { "image": "'$IMAGE_NAME'" }
+                  }
+                }
+              }')
+            echo "API deployment response: $API_RESPONSE"
+          fi
