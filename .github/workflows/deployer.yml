@@ -127,30 +127,24 @@ jobs:
           PROJECT_ID=$(echo "$PROJECT_INFO" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
           echo "Found project ID: $PROJECT_ID"
 
-          # Deploy using Railway CLI with explicit project and service flags
+          # Deploy using Railway CLI
           echo "Deploying image $IMAGE_NAME to Railway..."
           cd ./user-code
           
-          # Try different Railway deployment approaches
-          if railway up --image "$IMAGE_NAME" --service "$RAILWAY_SERVICE_ID"; then
-            echo "Deployment successful with service flag"
-          elif railway deploy --image "$IMAGE_NAME" --service "$RAILWAY_SERVICE_ID"; then
-            echo "Deployment successful with deploy command"
+          # Set the service ID environment variable
+          export RAILWAY_SERVICE_ID="$RAILWAY_SERVICE_ID"
+          
+          # Try Railway deployment with standard commands
+          if railway up; then
+            echo "Deployment successful with railway up"
+          elif railway deploy; then
+            echo "Deployment successful with railway deploy"
           else
             echo "CLI deployment failed, trying API deployment..."
             
-            # Fallback to API deployment
-            API_RESPONSE=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
+            # Simple API approach - trigger a new deployment
+            curl -X POST "https://backboard.railway.app/graphql/v2" \
               -H "Authorization: Bearer $RAILWAY_API_TOKEN" \
               -H "Content-Type: application/json" \
-              -d '{
-                "query": "mutation deploymentCreate($input: DeploymentCreateInput!) { deploymentCreate(input: $input) { id status } }",
-                "variables": {
-                  "input": {
-                    "serviceId": "'$RAILWAY_SERVICE_ID'",
-                    "meta": { "image": "'$IMAGE_NAME'" }
-                  }
-                }
-              }')
-            echo "API deployment response: $API_RESPONSE"
+              -d "{\"query\":\"mutation{deploymentCreate(input:{serviceId:\\\"$RAILWAY_SERVICE_ID\\\"}){id status}}\"}"
           fi
