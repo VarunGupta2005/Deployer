@@ -1,4 +1,4 @@
-name: PaaS Application Builder (Prebuilt Image)
+name: PaaS Application Builder
 
 on:
   workflow_dispatch:
@@ -15,6 +15,10 @@ on:
         description: 'The ID of the Railway service to update'
         required: true
         type: string
+      githubRepoId:
+        description: 'The unique ID of the GitHub repository'
+        required: true
+        type: string
 
 jobs:
   build-and-deploy:
@@ -22,126 +26,92 @@ jobs:
 
     permissions:
       contents: read
-      packages: write   # required to push to GHCR
+      packages: write   # required for GHCR push
 
     steps:
-      # 1. Checkout user repo
-      - name: Checkout User's Code
+      - name: 1. Check out User's Code
         uses: actions/checkout@v4
         with:
           repository: ${{ inputs.owner }}/${{ inputs.repo }}
           path: ./user-code
 
-      # 2. Generate Dockerfile for user's code
-      - name: Generate Dockerfile
+      - name: 2. Generate Dockerfile with Buildpack
         run: |
-          cd ./user-code
-          
-          # Check if Dockerfile already exists
-          if [ -f "Dockerfile" ]; then
-            echo "Dockerfile already exists, using existing file"
-          else
-            echo "No Dockerfile found, generating one..."
-            
-            # Detect project type and generate appropriate Dockerfile
-            if [ -f "package.json" ]; then
-              echo "Node.js project detected"
-              echo "FROM node:18-alpine" > Dockerfile
-              echo "WORKDIR /usr/src/app" >> Dockerfile
-              echo "COPY package*.json ./" >> Dockerfile
-              echo "RUN npm install --production" >> Dockerfile
-              echo "COPY . ." >> Dockerfile
-              echo "EXPOSE 3000" >> Dockerfile
-              echo 'CMD ["npm", "start"]' >> Dockerfile
-            elif [ -f "requirements.txt" ]; then
-              echo "Python project detected"
-              echo "FROM python:3.9-slim" > Dockerfile
-              echo "WORKDIR /usr/src/app" >> Dockerfile
-              echo "COPY requirements.txt ./" >> Dockerfile
-              echo "RUN pip install --no-cache-dir -r requirements.txt" >> Dockerfile
-              echo "COPY . ." >> Dockerfile
-              echo "EXPOSE 8000" >> Dockerfile
-              echo 'CMD ["python", "app.py"]' >> Dockerfile
-            else
-              echo "Unknown project type, creating generic Dockerfile"
-              echo "FROM alpine:latest" > Dockerfile
-              echo "WORKDIR /usr/src/app" >> Dockerfile
-              echo "COPY . ." >> Dockerfile
-              echo "EXPOSE 8080" >> Dockerfile
-              echo 'CMD ["echo", "Please configure your application startup command"]' >> Dockerfile
-            fi
-          fi
-          
-          echo "Generated Dockerfile:"
-          cat Dockerfile
+          CODE_PATH="./user-code"
+          DOCKERFILE_PATH="$CODE_PATH/Dockerfile.generated"
 
-      # 3. Log in to GitHub Container Registry (GHCR)
-      - name: Log in to GHCR
+          if [ -f "$CODE_PATH/package.json" ]; then
+            echo "-> Node.js project detected"
+            cat <<EOF > "$DOCKERFILE_PATH"
+            FROM node:18-alpine
+            WORKDIR /usr/src/app
+            COPY package*.json ./
+            RUN npm install --production
+            COPY . .
+            EXPOSE 3000
+            CMD ["npm", "start"]
+            EOF
+          else
+            echo "❌ Error: Unknown project type. No package.json found."
+            exit 1
+          fi
+
+          echo "✅ Generated Dockerfile:"
+          cat "$DOCKERFILE_PATH"
+
+      - name: 3. Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      # 3. Build Docker image
-      - name: Build Docker image
+      - name: 4. Build & Push Docker Image
         run: |
           IMAGE_NAME=ghcr.io/${{ github.repository }}:latest
           IMAGE_NAME=$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
-          echo "Building image $IMAGE_NAME"
-          docker build -t $IMAGE_NAME ./user-code
 
-      # 4. Push Docker image
-      - name: Push Docker image
-        run: |
-          IMAGE_NAME=ghcr.io/${{ github.repository }}:latest
-          IMAGE_NAME=$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
-          echo "Pushing image $IMAGE_NAME"
+          echo "📦 Building Docker image: $IMAGE_NAME"
+          docker build -f ./user-code/Dockerfile.generated -t $IMAGE_NAME ./user-code
+
+          echo "🚀 Pushing Docker image to GHCR..."
           docker push $IMAGE_NAME
 
-      # 5. Install Railway CLI
-      - name: Install Railway CLI
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+
+      - name: 5. Install Railway CLI
         run: |
           curl -fsSL https://railway.app/install.sh | sh
           echo "$HOME/.railway/bin" >> $GITHUB_PATH
 
-      # 6. Deploy prebuilt image to Railway
-      - name: Deploy to Railway
+      - name: 6. Deploy to Railway
         env:
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           RAILWAY_SERVICE_ID: ${{ inputs.railwayServiceId }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          IMAGE_NAME=ghcr.io/${{ github.repository }}:latest
-          IMAGE_NAME=$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
+          echo "Deploying to Railway service: $RAILWAY_SERVICE_ID"
 
-          # Authenticate Railway
+          if [ -z "$RAILWAY_API_TOKEN" ]; then
+            echo "❌ ERROR: RAILWAY_API_TOKEN secret is missing."
+            exit 1
+          fi
+
+          IMAGE_NAME=${IMAGE_NAME:-ghcr.io/${{ github.repository }}:latest}
+
+          echo "🔑 Setting up Railway token..."
           mkdir -p ~/.railway
           echo "$RAILWAY_API_TOKEN" > ~/.railway/token
-          railway whoami
 
-          # Get project info via API to avoid interactive prompts
-          PROJECT_INFO=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
-            -H "Authorization: Bearer $RAILWAY_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "query": "query service($id: String!) { service(id: $id) { project { id } } }",
-              "variables": { "id": "'$RAILWAY_SERVICE_ID'" }
-            }')
-          
-          PROJECT_ID=$(echo "$PROJECT_INFO" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-          echo "Found project ID: $PROJECT_ID"
-
-          # Deploy the built Docker image to Railway
-          echo "Deploying image $IMAGE_NAME to Railway..."
-          
-          # First, update the Railway service to use our Docker image
-          echo "Updating Railway service to use Docker image..."
+          echo "📡 Updating Railway service to use GHCR image..."
           UPDATE_RESPONSE=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
             -H "Authorization: Bearer $RAILWAY_API_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"query\":\"mutation{serviceUpdate(id:\\\"$RAILWAY_SERVICE_ID\\\",input:{source:{image:\\\"$IMAGE_NAME\\\"}}){id}}\"}") 
+            -d "{\"query\":\"mutation{serviceUpdate(id:\\\"$RAILWAY_SERVICE_ID\\\",input:{source:{image:\\\"$IMAGE_NAME\\\",imageCredentials:{username:\\\"$GHCR_USERNAME\\\",password:\\\"$GHCR_PASSWORD\\\"}}}){id}}\"}")
+
           echo "Service update response: $UPDATE_RESPONSE"
-          
-          # Then trigger a new deployment
-          echo "Creating new deployment..."
+
+          echo "🚀 Triggering deployment..."
           DEPLOY_RESPONSE=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
             -H "Authorization: Bearer $RAILWAY_API_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"query\":\"mutation{deploymentCreate(input:{serviceId:\\\"$RAILWAY_SERVICE_ID\\\"}){id status}}\"}") 
+            -d "{\"query\":\"mutation{deploymentCreate(input:{serviceId:\\\"$RAILWAY_SERVICE_ID\\\"}){id status}}\"}")
+
           echo "Deployment response: $DEPLOY_RESPONSE"
