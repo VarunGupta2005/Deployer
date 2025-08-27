@@ -9,7 +9,7 @@ const railway = new GraphQLClient('https://backboard.railway.app/graphql/v2', {
 });
 const octokit = new Octokit({ auth: process.env.GITHUB_PAT });
 
-async function triggerBuilderWorkflow(owner, repo, railwayServiceId, githubRepoId) {
+async function triggerBuilderWorkflow(owner, repo, railwayServiceId) {
   console.log(`Attempting to dispatch workflow 'deployer.yml' for ${owner}/${repo}`);
   try {
     // First, let's try to get the workflow to make sure it exists
@@ -60,7 +60,6 @@ async function triggerBuilderWorkflow(owner, repo, railwayServiceId, githubRepoI
         owner: owner,
         repo: repo,
         railwayServiceId: railwayServiceId,
-        githubRepoId: githubRepoId.toString(),
       },
     });
     console.log("Successfully dispatched the workflow.");
@@ -126,7 +125,7 @@ export default async function handler(req, res) {
       }
 
       console.log(`Triggering builder for service ${project.railwayServiceId}`);
-      await triggerBuilderWorkflow(owner, repo, project.railwayServiceId, githubRepoId);
+      await triggerBuilderWorkflow(owner, repo, project.railwayServiceId);
     }
 
     res.status(202).json({ message: 'Deployment process initiated.' });
