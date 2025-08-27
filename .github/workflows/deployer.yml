@@ -1,4 +1,4 @@
-name: PaaS Application Builder
+name: PaaS Application Builder (Prebuilt Image)
 
 on:
   workflow_dispatch:
@@ -15,102 +15,63 @@ on:
         description: 'The ID of the Railway service to update'
         required: true
         type: string
-      githubRepoId:
-        description: 'The unique ID of the GitHub repository'
-        required: true
-        type: string
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    
+
+    permissions:
+      contents: read
+      packages: write   # required to push to GHCR
+
     steps:
-      - name: 1. Check out User's Code
+      # 1. Checkout user repo
+      - name: Checkout User's Code
         uses: actions/checkout@v4
         with:
           repository: ${{ inputs.owner }}/${{ inputs.repo }}
           path: ./user-code
 
-      - name: 2. Generate Dockerfile with Buildpack
-        run: |
-          CODE_PATH="./user-code"
-          DOCKERFILE_PATH="./user-code/Dockerfile.generated"
-          
-          if [ -f "$CODE_PATH/package.json" ]; then
-            echo "-> Node.js project detected"
-            echo "FROM node:18-alpine" > "$DOCKERFILE_PATH"
-            echo "WORKDIR /usr/src/app" >> "$DOCKERFILE_PATH"
-            echo "COPY package*.json ./" >> "$DOCKERFILE_PATH"
-            echo "RUN npm install --production" >> "$DOCKERFILE_PATH"
-            echo "COPY . ." >> "$DOCKERFILE_PATH"
-            echo "EXPOSE 3000" >> "$DOCKERFILE_PATH"
-            echo 'CMD ["npm", "start"]' >> "$DOCKERFILE_PATH"
-          else
-            echo "-> Error: Unknown project type. No package.json found."
-            exit 1
-          fi
+      # 2. Log in to GitHub Container Registry (GHCR)
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: 3. Install Railway CLI
+      # 3. Build Docker image
+      - name: Build Docker image
+        run: |
+          IMAGE_NAME=ghcr.io/${{ github.repository }}:latest
+          echo "Building image $IMAGE_NAME"
+          docker build -t $IMAGE_NAME ./user-code
+
+      # 4. Push Docker image
+      - name: Push Docker image
+        run: |
+          IMAGE_NAME=ghcr.io/${{ github.repository }}:latest
+          echo "Pushing image $IMAGE_NAME"
+          docker push $IMAGE_NAME
+
+      # 5. Install Railway CLI
+      - name: Install Railway CLI
         run: |
           curl -fsSL https://railway.app/install.sh | sh
           echo "$HOME/.railway/bin" >> $GITHUB_PATH
 
-      - name: 4. Deploy to Railway
+      # 6. Deploy prebuilt image to Railway
+      - name: Deploy to Railway
         env:
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           RAILWAY_SERVICE_ID: ${{ inputs.railwayServiceId }}
         run: |
-          echo "🚀 Deploying to Railway service: $RAILWAY_SERVICE_ID"
+          IMAGE_NAME=ghcr.io/${{ github.repository }}:latest
 
-          # 1. Check token
-          if [ -z "$RAILWAY_API_TOKEN" ]; then
-            echo "❌ ERROR: RAILWAY_API_TOKEN secret is missing or empty."
-            exit 1
-          fi
-          echo "✅ Token format check: ${RAILWAY_API_TOKEN:0:8}...${RAILWAY_API_TOKEN: -8}"
-
-          # 2. Save token for Railway CLI
+          # Authenticate Railway
           mkdir -p ~/.railway
           echo "$RAILWAY_API_TOKEN" > ~/.railway/token
+          railway whoami
 
-          # 3. Verify authentication
-          echo "🔑 Verifying Railway authentication..."
-          railway whoami || { echo "❌ Authentication failed"; exit 1; }
+          # Link to service
+          railway link --service $RAILWAY_SERVICE_ID
 
-          # 4. Get project info from the service
-          echo "📡 Fetching project info for service..."
-          PROJECT_RESPONSE=$(curl -s -X POST "https://backboard.railway.app/graphql/v2" \
-            -H "Authorization: Bearer $RAILWAY_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "query": "query service($id: String!) { service(id: $id) { project { id name } } }",
-              "variables": { "id": "'$RAILWAY_SERVICE_ID'" }
-            }')
-
-          PROJECT_ID=$(echo "$PROJECT_RESPONSE" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-          PROJECT_NAME=$(echo "$PROJECT_RESPONSE" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
-
-          if [ -z "$PROJECT_ID" ]; then
-            echo "❌ Could not fetch project ID from Railway API."
-            echo "Response: $PROJECT_RESPONSE"
-            exit 1
-          fi
-
-          echo "✅ Found project ID: $PROJECT_ID (Name: $PROJECT_NAME)"
-
-          # 5. Link project + service
-          echo "🔗 Linking Railway project/service..."
-          railway link --project "$PROJECT_ID" --service "$RAILWAY_SERVICE_ID"
-
-          # 6. Move into user-code folder
-          if [ -d "./user-code" ]; then
-            cd ./user-code
-            echo "📂 Changed to user-code directory: $(pwd)"
-          else
-            echo "❌ user-code directory not found"
-            exit 1
-          fi
-
-          # 7. Deploy
-          echo "🚀 Starting Railway deployment..."
-          railway up
+          # Deploy prebuilt Docker image
+          echo "Deploying image $IMAGE_NAME to Railway..."
+          railway up --image $IMAGE_NAME
