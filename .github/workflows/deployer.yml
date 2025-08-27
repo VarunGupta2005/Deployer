@@ -40,6 +40,7 @@ jobs:
       - name: Build Docker image
         run: |
           IMAGE_NAME=ghcr.io/${{ github.repository }}:latest
+          IMAGE_NAME=$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
           echo "Building image $IMAGE_NAME"
           docker build -t $IMAGE_NAME ./user-code
 
@@ -47,6 +48,7 @@ jobs:
       - name: Push Docker image
         run: |
           IMAGE_NAME=ghcr.io/${{ github.repository }}:latest
+          IMAGE_NAME=$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
           echo "Pushing image $IMAGE_NAME"
           docker push $IMAGE_NAME
 
@@ -63,6 +65,7 @@ jobs:
           RAILWAY_SERVICE_ID: ${{ inputs.railwayServiceId }}
         run: |
           IMAGE_NAME=ghcr.io/${{ github.repository }}:latest
+          IMAGE_NAME=$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
 
           # Authenticate Railway
           mkdir -p ~/.railway
