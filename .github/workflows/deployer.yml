@@ -15,10 +15,6 @@ on:
         description: 'The ID of the Railway service to update'
         required: true
         type: string
-      githubRepoId:
-        description: 'The unique ID of the GitHub repository'
-        required: true
-        type: string
 
 jobs:
   build-and-deploy:
