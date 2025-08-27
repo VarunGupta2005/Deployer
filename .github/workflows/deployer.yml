@@ -32,7 +32,50 @@ jobs:
           repository: ${{ inputs.owner }}/${{ inputs.repo }}
           path: ./user-code
 
-      # 2. Log in to GitHub Container Registry (GHCR)
+      # 2. Generate Dockerfile for user's code
+      - name: Generate Dockerfile
+        run: |
+          cd ./user-code
+          
+          # Check if Dockerfile already exists
+          if [ -f "Dockerfile" ]; then
+            echo "Dockerfile already exists, using existing file"
+          else
+            echo "No Dockerfile found, generating one..."
+            
+            # Detect project type and generate appropriate Dockerfile
+            if [ -f "package.json" ]; then
+              echo "Node.js project detected"
+              echo "FROM node:18-alpine" > Dockerfile
+              echo "WORKDIR /usr/src/app" >> Dockerfile
+              echo "COPY package*.json ./" >> Dockerfile
+              echo "RUN npm install --production" >> Dockerfile
+              echo "COPY . ." >> Dockerfile
+              echo "EXPOSE 3000" >> Dockerfile
+              echo 'CMD ["npm", "start"]' >> Dockerfile
+            elif [ -f "requirements.txt" ]; then
+              echo "Python project detected"
+              echo "FROM python:3.9-slim" > Dockerfile
+              echo "WORKDIR /usr/src/app" >> Dockerfile
+              echo "COPY requirements.txt ./" >> Dockerfile
+              echo "RUN pip install --no-cache-dir -r requirements.txt" >> Dockerfile
+              echo "COPY . ." >> Dockerfile
+              echo "EXPOSE 8000" >> Dockerfile
+              echo 'CMD ["python", "app.py"]' >> Dockerfile
+            else
+              echo "Unknown project type, creating generic Dockerfile"
+              echo "FROM alpine:latest" > Dockerfile
+              echo "WORKDIR /usr/src/app" >> Dockerfile
+              echo "COPY . ." >> Dockerfile
+              echo "EXPOSE 8080" >> Dockerfile
+              echo 'CMD ["echo", "Please configure your application startup command"]' >> Dockerfile
+            fi
+          fi
+          
+          echo "Generated Dockerfile:"
+          cat Dockerfile
+
+      # 3. Log in to GitHub Container Registry (GHCR)
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
